@@ -15,7 +15,7 @@ grid_size = 13
 w_ori = 480.0
 h_ori = 640.0
 
-root_path = './data/train/'
+root_path = './train/'
 class_path = []
 img_path = []
 
@@ -45,7 +45,7 @@ for idx_class in range(1, num_class+1):
     total_bbx = pickle.load(fr)
     fr.close()
 
-    data = [];
+    data = []
     # genarate image name
     for i in range(0,num_image):
         img_name = img_path[idx_class - 1]
@@ -104,8 +104,8 @@ for idx_class in range(1, num_class+1):
         # form class in each grid
         grid = np.zeros((grid_size, grid_size))  
         step = int(img_size / grid_size)
-        for x in range(6,8):
-            for y in range(6,8):
+        for x in range(grid_size):
+            for y in range(grid_size):
                 temp = img[y*step:(y+1)*step, x*step:(x+1)*step, :]
                 if np.sum(temp) > 0:
                     grid[y][x] = idx_class
@@ -119,4 +119,4 @@ for idx_class in range(1, num_class+1):
         data.append(datapoint)
         # print datapoint
     print (idx_class)
-    np.save('./data/npy_data/' + str(idx_class) + '.npy', data)
+    np.save('./' + str(idx_class) + '.npy', data)
