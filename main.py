@@ -32,9 +32,10 @@ from darknet import Darknet
 # import _init_paths
 # from datasets.factory import get_imdb
 # from custom import *
+from dataloader import *
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-parser.add_argument('--arch', default='localizer_alexnet')
+# parser.add_argument('--arch', default='localizer_alexnet')
 
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
@@ -103,7 +104,7 @@ def main():
     #     model = localizer_alexnet(pretrained=args.pretrained)
     # elif args.arch=='localizer_alexnet_robust':
     #     model = localizer_alexnet_robust(pretrained=args.pretrained)
-    # print(model)
+    print(model)
 
     # model.features = torch.nn.DataParallel(model.features)
     # model.cuda()
@@ -233,7 +234,7 @@ def train(train_loader, model, criterion, optimizer, epoch, data_log, vis):
 
     last_epoch = 43
 
-    for i, (input, target) in enumerate(train_loader):        
+    for i, ( , target) in enumerate(train_loader):        
         # measure data loading time
         data_time.update(time.time() - last_time)
 
