@@ -105,24 +105,43 @@ def train(epoch):
         cur_model = model.module
     else:
         cur_model = model
-    train_loader = torch.utils.data.DataLoader(
-        dataset.listDataset(trainlist, shape=(init_width, init_height),
-                       shuffle=True,
-                       transform=transforms.Compose([
-                           transforms.ToTensor(),
-                       ]), 
-                       train=True, 
-                       seen=cur_model.seen,
-                       batch_size=batch_size,
-                       num_workers=num_workers),
-        batch_size=batch_size, shuffle=False, **kwargs)
+    # train_loader = torch.utils.data.DataLoader(
+    #     dataset.listDataset(trainlist, shape=(init_width, init_height),
+    #                    shuffle=True,
+    #                    transform=transforms.Compose([
+    #                        transforms.ToTensor(),
+    #                    ]), 
+    #                    train=True, 
+    #                    seen=cur_model.seen,
+    #                    batch_size=batch_size,
+    #                    num_workers=num_workers),
+    #     batch_size=batch_size, shuffle=False, **kwargs)
+    
+    batch_size = 1
+    num_train_class = 10
+    total_image, total_grid = total_image_loader(num_train_class)
+    total_image = np.array(total_image)
+    total_image = Variable(torch.FloatTensor(total_image))
+    total_grid = np.array(total_grid)
+    total_grid = Variable(torch.FloatTensor(total_grid))
 
     lr = adjust_learning_rate(optimizer, processed_batches)
     logging('epoch %d, processed %d samples, lr %f' % (epoch, epoch * len(train_loader.dataset), lr))
     model.train()
     t1 = time.time()
     avg_time = torch.zeros(9)
-    for batch_idx, (data, target) in enumerate(train_loader):
+
+    num_batch = num_train_class * 1313 / batch_size
+    idx = 0
+    for batch_idx in num_batch:
+    # for batch_idx, (data, target) in enumerate(train_loader):
+        data_tmp = total_image[idx : idx + 3 * batch_size, :, :, :]
+        data = data_tmp.view(data_tmp.shape[1], data_tmp.shape[2], data_tmp.shape[0] * data_tmp.shape[3])
+
+        target_tmp = total_grid[idx : idx + 3 * batch_size, :, :, :]
+        target = target_tmp.view(batch_size, target_tmp.shape[0], target_tmp.shape[1], target_tmp.shape[2], target_tmp.shape[3])   
+
+
         t2 = time.time()
         adjust_learning_rate(optimizer, processed_batches)
         processed_batches = processed_batches + 1
