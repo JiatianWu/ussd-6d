@@ -21,23 +21,77 @@ for i in range(1, num_class+1):
         class_path.append(root_path + str(i) + '/')
         img_path.append(root_path + str(i) + '/rgb/')
 
-def class_label_grid(class_index, img):
+def ctrl_pt_loader(class_index):
+    """Load all the control points of one specific class.
+
+    Args:
+        class_index (int): index of a class (1-15)
+
+    Returns:
+        2D numpy array: 1313 * 18 
+    """
+    fr = open(class_path[class_index - 1] + 'bb.pkl')
+    total_bbx = pickle.load(fr)
+    fr.close()
+
+    # x = []
+    # y = []
+    crtl_pt = []
+    for i in range(0, num_image):
+        bbx = total_bbx[str(class_index)]
+        # print (bbx)
+        centriod = grid_size * 0.5
+        pt = [centriod, centriod]
+        for j in range(len(bbx)):
+            # temp_x, temp_y = coordinate_transform(bbx[j][0][0], bbx[j][1][0])
+            temp_x = bbx[j][0][0] * grid_size * 1.0 / img_size
+            temp_y = bbx[j][1][0] * grid_size * 1.0 / img_size
+            pt.append(temp_x)
+            pt.append(temp_y)
+        crtl_pt.append(pt)
+
+            # pt.append(bbx[j][0][0] * 1.0 / h_ori * img_size)
+            # pt.append(bbx[j][1][0] * 1.0 / w_ori * img_size)
+            # x.append(temp_x)
+            # y.append(temp_y)
+            
+        # print (pt)
+        # test 3D bbx
+        # plt.scatter(x,y)
+        # plt.plot([x[0],x[1]], [y[0],y[1]], '-o')
+        # plt.plot([x[0],x[2]], [y[0],y[2]], '-o')
+        # plt.plot([x[0],x[4]], [y[0],y[4]], '-o')
+        # plt.plot([x[1],x[3]], [y[1],y[3]], '-o')
+        # plt.plot([x[1],x[5]], [y[1],y[5]], '-o')
+        # plt.plot([x[2],x[3]], [y[2],y[3]], '-o')
+        # plt.plot([x[2],x[6]], [y[2],y[6]], '-o')
+        # plt.plot([x[3],x[7]], [y[3],y[7]], '-o')
+        # plt.plot([x[4],x[5]], [y[4],y[5]], '-o')
+        # plt.plot([x[4],x[6]], [y[4],y[6]], '-o')
+        # plt.plot([x[5],x[7]], [y[5],y[7]], '-o')
+        # plt.plot([x[6],x[7]], [y[6],y[7]], '-o')
+        # plt.show()
+    return crtl_pt
+
+def class_label_grid(class_index, img, pt):
     """Load the 'S X S X number_of_classes' class label grid of image.
 
     Args:
     	class_index (int): index of a class (1-15)
         img: image array
+        pt: 2 * 9 point coordinates
 
     Returns:
-        3D numpy array: S * S * num_class
+        2D numpy array: S * S * 19
     """
-    grid = np.zeros((grid_size, grid_size, num_class))  
+    grid = np.zeros((grid_size, grid_size, 19))  
     step = int(img_size / grid_size)
     for x in range(grid_size):
         for y in range(grid_size):
             temp = img[y*step:(y+1)*step, x*step:(x+1)*step, :]
             if np.sum(temp) > 0:
-                grid[y, x, class_index - 1] = 1    
+                grid[y, x, 0] = class_index 
+                grid[y, x, 1:] = pt
     return grid
 
 
@@ -49,8 +103,10 @@ def image_loader(class_index):
 
     Returns:
         Image - 4D numpy array: 1313 * 416 * 416 * 3 
-        Grid - 4D numpy array: 1313 * S * S * num_class
+        Grid - 4D numpy array: 1313 * S * S * 19
     """
+    pt = ctrl_pt_loader(class_index)
+
     image = []
     grid = []
     for i in range(0, num_image):
@@ -77,70 +133,52 @@ def image_loader(class_index):
 
 
         # generate grid 
-        grid.append(class_label_grid(class_index, img))
+        grid.append(class_label_grid(class_index, img, pt[i]))
     return image, grid
 
-def ctrl_pt_loader(class_index):
-    """Load all the control points of one specific class.
+
+
+def total_image_loader():
+    """Load all the images of all classes.
 
     Args:
         class_index (int): index of a class (1-15)
 
     Returns:
-        2D numpy array: 1313 * 18 
+        Image - 4D numpy array: 1313 * 416 * 416 * 3 
+        Grid - 4D numpy array: 1313 * S * S * 19
     """
-    fr = open(class_path[class_index - 1] + 'bb.pkl')
-    total_bbx = pickle.load(fr)
-    fr.close()
+    total_image = np.zeros((num_image * num_class, int(img_size), int(img_size), 3)) 
+    total_grid = np.zeros((num_image * num_class, grid_size, grid_size, 19)) 
+    for i in range(0, num_class):
+        print ('Now Loading Class: ' + str(i+1) + '...')
+        image, grid = image_loader(i)
+        total_image[i * num_image : (i+1) * num_image ,:,:,:] = image
+        total_grid[i * num_image : (i+1) * num_image ,:,:,:] = grid
+        # total_image.append(image)
+        # total_grid.append(grid)
+    return total_image, total_grid
 
-    # x = []
-    # y = []
-    crtl_pt = []
-    for i in range(0, num_image):
-        bbx = total_bbx[str(class_index)]
-        # print (bbx)
-        pt = [img_size/2, img_size/2]
-        for j in range(len(bbx)):
-            # temp_x, temp_y = coordinate_transform(bbx[j][0][0], bbx[j][1][0])
-            temp_x = bbx[j][0][0]
-            temp_y = bbx[j][1][0] 
-            pt.append(temp_x)
-            pt.append(temp_y)
-        crtl_pt.append(pt)
-
-	        # pt.append(bbx[j][0][0] * 1.0 / h_ori * img_size)
-	        # pt.append(bbx[j][1][0] * 1.0 / w_ori * img_size)
-	        # x.append(temp_x)
-	        # y.append(temp_y)
-            
-	    # print (pt)
-	    # test 3D bbx
-	    # plt.scatter(x,y)
-	    # plt.plot([x[0],x[1]], [y[0],y[1]], '-o')
-	    # plt.plot([x[0],x[2]], [y[0],y[2]], '-o')
-	    # plt.plot([x[0],x[4]], [y[0],y[4]], '-o')
-	    # plt.plot([x[1],x[3]], [y[1],y[3]], '-o')
-	    # plt.plot([x[1],x[5]], [y[1],y[5]], '-o')
-	    # plt.plot([x[2],x[3]], [y[2],y[3]], '-o')
-	    # plt.plot([x[2],x[6]], [y[2],y[6]], '-o')
-	    # plt.plot([x[3],x[7]], [y[3],y[7]], '-o')
-	    # plt.plot([x[4],x[5]], [y[4],y[5]], '-o')
-	    # plt.plot([x[4],x[6]], [y[4],y[6]], '-o')
-	    # plt.plot([x[5],x[7]], [y[5],y[7]], '-o')
-	    # plt.plot([x[6],x[7]], [y[6],y[7]], '-o')
-	    # plt.show()
-    return crtl_pt
 
 if __name__ == '__main__':
-    image, grid = image_loader(1)
-    pt = ctrl_pt_loader(1)
-    print len(image)
-    print image[0].shape
-    print '----'
-    print len(grid)
-    print grid[0].shape
-    print '----'
-    print len(pt)
-    print len(pt[0])
+    # image, grid = image_loader(1)
+    # pt = ctrl_pt_loader(1)
+    # print len(image)
+    # print image[0].shape
+    # print '----'
+    # print len(grid)
+    # print grid[0].shape
+    # print grid[0][6][6]
+    # print '----'
+    total_image, total_grid = total_image_loader()
+    print len(total_image)
+    print total_image[0].shape
+    print len(total_grid)
+    print total_grid[0].shape
 
+    # transfer numpy array to tensor
+    # train_frame = np.array(train_frame)
+    # train_frame = Variable(torch.FloatTensor(train_frame)) 
+    # train_frame_label = np.array(train_frame_label)
+    # train_frame_label = Variable(torch.LongTensor(train_frame_label)) 
 
