@@ -40,12 +40,13 @@ def ctrl_pt_loader(class_index):
     for i in range(0, num_image):
         bbx = total_bbx[str(class_index)]
         # print (bbx)
-        centriod = grid_size * 0.5
+        scale = grid_size
+        centriod = scale * 0.5
         pt = [centriod, centriod]
         for j in range(len(bbx)):
             # temp_x, temp_y = coordinate_transform(bbx[j][0][0], bbx[j][1][0])
-            temp_x = bbx[j][0][0] * grid_size * 1.0 / img_size
-            temp_y = bbx[j][1][0] * grid_size * 1.0 / img_size
+            temp_x = bbx[j][0][0] * scale * 1.0 / img_size
+            temp_y = bbx[j][1][0] * scale * 1.0 / img_size
             pt.append(temp_x)
             pt.append(temp_y)
         crtl_pt.append(pt)
@@ -138,19 +139,19 @@ def image_loader(class_index):
 
 
 
-def total_image_loader():
+def total_image_loader(num):
     """Load all the images of all classes.
 
     Args:
-        class_index (int): index of a class (1-15)
+        num (int): num of classes (1-15)
 
     Returns:
-        Image - 4D numpy array: 1313 * 416 * 416 * 3 
-        Grid - 4D numpy array: 1313 * S * S * 19
+        Image - 4D numpy array: 19695 * 416 * 416 * 3 
+        Grid - 4D numpy array: 19695 * S * S * 19
     """
     total_image = np.zeros((num_image * num_class, int(img_size), int(img_size), 3)) 
     total_grid = np.zeros((num_image * num_class, grid_size, grid_size, 19)) 
-    for i in range(0, num_class):
+    for i in range(0, num):
         print ('Now Loading Class: ' + str(i+1) + '...')
         image, grid = image_loader(i)
         total_image[i * num_image : (i+1) * num_image ,:,:,:] = image
