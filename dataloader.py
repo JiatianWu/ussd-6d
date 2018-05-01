@@ -103,12 +103,12 @@ def image_loader(class_index):
         class_index (int): index of a class (1-15)
 
     Returns:
-        Image - 4D numpy array: 1313 * 416 * 416 * 3 
+        Image - 4D numpy array: 1313 * 3 * 416 * 416
         Grid - 4D numpy array: 1313 * S * S * 19
     """
     pt = ctrl_pt_loader(class_index)
 
-    image = []
+    image = np.zeros((num_image, 3, int(img_size), int(img_size))) 
     grid = []
     for i in range(0, num_image):
     	img_name = img_path[class_index - 1]
@@ -130,8 +130,9 @@ def image_loader(class_index):
         # plt.show()
         # print(img.shape)
         # print(img[0,0,:])
-        image.append(img)
-
+        image[i, 0, :, :] = img[:, :, 0]
+        image[i, 1, :, :] = img[:, :, 1]
+        image[i, 2, :, :] = img[:, :, 2]
 
         # generate grid 
         grid.append(class_label_grid(class_index, img, pt[i]))
@@ -146,11 +147,11 @@ def total_image_loader(num):
         num (int): num of classes (1-15)
 
     Returns:
-        Image - 4D numpy array: 19695 * 416 * 416 * 3 
-        Grid - 4D numpy array: 19695 * S * S * 19
+        Image - 4D numpy array: (num * 1313) * 3 * 416 * 416 
+        Grid - 4D numpy array: (num * 1313) * S * S * 19
     """
-    total_image = np.zeros((num_image * num_class, int(img_size), int(img_size), 3)) 
-    total_grid = np.zeros((num_image * num_class, grid_size, grid_size, 19)) 
+    total_image = np.zeros((num_image * num, 3, int(img_size), int(img_size))) 
+    total_grid = np.zeros((num_image * num, grid_size, grid_size, 19)) 
     for i in range(0, num):
         print ('Now Loading Class: ' + str(i+1) + '...')
         image, grid = image_loader(i)
@@ -162,16 +163,16 @@ def total_image_loader(num):
 
 
 if __name__ == '__main__':
-    # image, grid = image_loader(1)
-    # pt = ctrl_pt_loader(1)
-    # print len(image)
-    # print image[0].shape
-    # print '----'
-    # print len(grid)
-    # print grid[0].shape
-    # print grid[0][6][6]
-    # print '----'
-    total_image, total_grid = total_image_loader()
+    image, grid = image_loader(1)
+    pt = ctrl_pt_loader(1)
+    print len(image)
+    print image[0].shape
+    print '----'
+    print len(grid)
+    print grid[0].shape
+    print grid[0][6][6]
+    print '----'
+    total_image, total_grid = total_image_loader(7)
     print len(total_image)
     print total_image[0].shape
     print len(total_grid)

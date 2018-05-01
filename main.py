@@ -136,10 +136,10 @@ def train(epoch):
     for batch_idx in num_batch:
     # for batch_idx, (data, target) in enumerate(train_loader):
         data_tmp = total_image[idx : idx + 3 * batch_size, :, :, :]
-        data = data_tmp.view(data_tmp.shape[1], data_tmp.shape[2], data_tmp.shape[0] * data_tmp.shape[3])
+        data = data_tmp.view(batch_size,  3 * data_tmp.shape[1], data_tmp.shape[2], data_tmp.shape[3])
 
         target_tmp = total_grid[idx : idx + 3 * batch_size, :, :, :]
-        target = target_tmp.view(batch_size, target_tmp.shape[0], target_tmp.shape[1], target_tmp.shape[2], target_tmp.shape[3])   
+        target = target_tmp.view(batch_size, 3, target_tmp.shape[1], target_tmp.shape[2], target_tmp.shape[3])   
 
 
         t2 = time.time()
