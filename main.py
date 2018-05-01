@@ -83,6 +83,96 @@ if use_cuda:
 
 cfgfile       = 'cfg/ussd.cfg'
 
+def adjust_learning_rate(optimizer, batch):
+    """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
+    lr = learning_rate
+    for i in range(len(steps)):
+        scale = scales[i] if i < len(scales) else 1
+        if batch >= steps[i]:
+            lr = lr * scale
+            if batch == steps[i]:
+                break
+        else:
+            break
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr/batch_size
+    return lr
+
+def train(epoch):
+    global processed_batches
+    t0 = time.time()
+    if ngpus > 1:
+        cur_model = model.module
+    else:
+        cur_model = model
+    train_loader = torch.utils.data.DataLoader(
+        dataset.listDataset(trainlist, shape=(init_width, init_height),
+                       shuffle=True,
+                       transform=transforms.Compose([
+                           transforms.ToTensor(),
+                       ]), 
+                       train=True, 
+                       seen=cur_model.seen,
+                       batch_size=batch_size,
+                       num_workers=num_workers),
+        batch_size=batch_size, shuffle=False, **kwargs)
+
+    lr = adjust_learning_rate(optimizer, processed_batches)
+    logging('epoch %d, processed %d samples, lr %f' % (epoch, epoch * len(train_loader.dataset), lr))
+    model.train()
+    t1 = time.time()
+    avg_time = torch.zeros(9)
+    for batch_idx, (data, target) in enumerate(train_loader):
+        t2 = time.time()
+        adjust_learning_rate(optimizer, processed_batches)
+        processed_batches = processed_batches + 1
+
+        if use_cuda:
+            data = data.cuda()
+            #target= target.cuda()
+        t3 = time.time()
+        data, target = Variable(data), Variable(target)
+        t4 = time.time()
+        optimizer.zero_grad()
+        t5 = time.time()
+        output = model(data)
+        t6 = time.time()
+        region_loss.seen = region_loss.seen + data.data.size(0)
+        loss = region_loss(output, target)
+        t7 = time.time()
+        loss.backward()
+        t8 = time.time()
+        optimizer.step()
+        t9 = time.time()
+        if False and batch_idx > 1:
+            avg_time[0] = avg_time[0] + (t2-t1)
+            avg_time[1] = avg_time[1] + (t3-t2)
+            avg_time[2] = avg_time[2] + (t4-t3)
+            avg_time[3] = avg_time[3] + (t5-t4)
+            avg_time[4] = avg_time[4] + (t6-t5)
+            avg_time[5] = avg_time[5] + (t7-t6)
+            avg_time[6] = avg_time[6] + (t8-t7)
+            avg_time[7] = avg_time[7] + (t9-t8)
+            avg_time[8] = avg_time[8] + (t9-t1)
+            print('-------------------------------')
+            print('       load data : %f' % (avg_time[0]/(batch_idx)))
+            print('     cpu to cuda : %f' % (avg_time[1]/(batch_idx)))
+            print('cuda to variable : %f' % (avg_time[2]/(batch_idx)))
+            print('       zero_grad : %f' % (avg_time[3]/(batch_idx)))
+            print(' forward feature : %f' % (avg_time[4]/(batch_idx)))
+            print('    forward loss : %f' % (avg_time[5]/(batch_idx)))
+            print('        backward : %f' % (avg_time[6]/(batch_idx)))
+            print('            step : %f' % (avg_time[7]/(batch_idx)))
+            print('           total : %f' % (avg_time[8]/(batch_idx)))
+        t1 = time.time()
+    print('')
+    t1 = time.time()
+    logging('training with %f samples/s' % (len(train_loader.dataset)/(t1-t0)))
+    if (epoch+1) % save_interval == 0:
+        logging('save weights to %s/%06d.weights' % (backupdir, epoch+1))
+        cur_model.seen = (epoch + 1) * len(train_loader.dataset)
+        cur_model.save_weights('%s/%06d.weights' % (backupdir, epoch+1))
+
 def main():
     global args, best_prec1
     args = parser.parse_args()
@@ -203,231 +293,6 @@ def main():
     #             'optimizer' : optimizer.state_dict(),
     #         }, is_best)
 
-#TODO: You can add input arguments if you wish
-def train(train_loader, model, criterion, optimizer, epoch, data_log, vis):
-    batch_time = AverageMeter()
-    data_time = AverageMeter()
-    losses = AverageMeter()
-    avg_m1 = AverageMeter()
-    avg_m2 = AverageMeter()
-
-    # switch to train mode
-    model.train()
-
-    # use to count step 
-    count_step = 0
-
-    # use to measure step time 
-    last_time = time.time()
-
-    # use to record total iteration
-    total_iter = len(train_loader)
-
-    # up sample transform
-    trans_up = transforms.Compose([transforms.ToPILImage(), transforms.Resize((512,512))])
-
-    # color map type, here we choose jet 
-    color_map = mpl.cm.get_cmap('jet')
-
-    images = np.zeros((1, 512, 512, 3))
-    cls_names = train_loader.dataset.classes
-
-    last_epoch = 43
-
-    for i, ( , target) in enumerate(train_loader):        
-        # measure data loading time
-        data_time.update(time.time() - last_time)
-
-        target = target.type(torch.FloatTensor).cuda(async=True)
-        input_var = torch.autograd.Variable(input, requires_grad=True)
-        target_var = torch.autograd.Variable(target)
-
-        # TODO: Get output from model
-        # TODO: Perform any necessary functions on the output
-        # TODO: Compute loss using ``criterion``
-        # compute output
-        input_var = input_var.cuda()
-        output = model(input_var)
-
-        cur_step = epoch * total_iter + i
-
-        # store visualization
-        if (i%int(len(train_loader)/4)) == 0 and (epoch<3 or epoch >last_epoch or epoch==45 or epoch==30):
-            
-            for j in range(output.shape[0]):
-
-                dt_idices = [idx for idx in range(output.shape[1]) if target[j, idx] == 1]
-                heatmap = np.zeros((len(dt_idices), 512, 512, 4))
-
-                # vis image and normalize 
-                img_vis = input[j].cpu().numpy()
-                img_vis = (img_vis - img_vis.min()) / (img_vis.max() - img_vis.min())
-                vis.image(img_vis, opts=dict(title=str(epoch) + '_' + str(i) + '_' + str(j) + '_image'))
-
-                # create heat map and visulize 
-                images[0] = np.uint8(np.transpose(img_vis, (1, 2, 0)) * 255)
-                out_cpu = output.data.cpu().numpy()
-                out_cpu.resize((out_cpu.shape[0], out_cpu.shape[1], 1, out_cpu.shape[2], out_cpu.shape[3]))
-
-
-                for cls_i in range(len(dt_idices)):
-                    dt_i = dt_idices[cls_i]
-                    out_norm = (out_cpu[j, dt_i] - out_cpu[j,dt_i].min()) / (out_cpu[j,dt_i].max() - out_cpu[j,dt_i].min())
-                    out_up = trans_up(torch.Tensor(out_norm))
-                    out_up = np.uint8(color_map(np.array(out_up)) * 255)
-                    heatmap[cls_i] = out_up
-                    vis.image(np.transpose(out_up,(2,0,1)), opts=dict(title=str(epoch) + '_' + str(i) + '_' + str(j) + '_heatmap_' + cls_names[dt_i]))
-                
-                print(str(count_step + epoch * 4)+' '+str(j))
-                data_log.image_summary(tag='/train/'+str(count_step+epoch*4)+'/'+str(j)+'/heatmap', images=heatmap, step=cur_step)
-                data_log.image_summary(tag='/train/'+str(count_step+epoch*4)+'/'+str(j)+'/images', images=images, step=cur_step)
-            
-            count_step = count_step + 1
-
-        max_pooling = nn.MaxPool2d(kernel_size=(output.size()[2], output.size()[2]))
-        output = max_pooling(output)
-        output = output.view(output.shape[0], output.shape[1])
-        output = F.sigmoid(output)
-
-        loss = criterion(output, target_var)
-
-        # measure metrics and record loss
-        m1 = metric1(output.data, target)
-        m2 = metric2(output.data, target)
-        losses.update(loss.data[0], input.size(0))
-        avg_m1.update(m1[0], input.size(0))
-        avg_m2.update(m2[0], input.size(0))
-        
-        # TODO: 
-        # compute gradient and do SGD step
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-
-        # measure elapsed time
-        batch_time.update(time.time() - last_time)
-        end = time.time()
-        
-        if i % args.print_freq == 0:
-            print('Epoch: [{0}][{1}/{2}]\t'
-                  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                  'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
-                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                  'Metric1 {avg_m1.val:.3f} ({avg_m1.avg:.3f})\t'
-                  'Metric2 {avg_m2.val:.3f} ({avg_m2.avg:.3f})'.format(
-                   epoch, i, len(train_loader), batch_time=batch_time,
-                   data_time=data_time, loss=losses, avg_m1=avg_m1,
-                   avg_m2=avg_m2))
-
-        #TODO: Visualize things as mentioned in handout
-        #TODO: Visualize at appropriate intervals
-        if i % args.print_freq == 0:
-            data_log.scalar_summary(tag='train/loss', value=losses.avg, step=cur_step)
-            data_log.scalar_summary(tag='train/metric1', value=avg_m1.avg, step=cur_step)
-            data_log.scalar_summary(tag='train/metric2', value=avg_m2.avg, step=cur_step)
-            data_log.model_param_histo_summary(model=model, step=cur_step)
-
-
-def validate(val_loader, model, criterion, epoch, data_log, vis):
-    batch_time = AverageMeter()
-    losses = AverageMeter()
-    avg_m1 = AverageMeter()
-    avg_m2 = AverageMeter()
-
-    # switch to evaluate mode
-    model.eval()
-    total_iter = len(val_loader)
-
-    end = time.time()
-    for i, (input, target) in enumerate(val_loader):
-        cur_step = epoch * total_iter + i
-
-        target = target.type(torch.FloatTensor).cuda(async=True)
-        input_var = torch.autograd.Variable(input, volatile=True)
-        target_var = torch.autograd.Variable(target, volatile=True)
-
-        # TODO: Get output from model
-        # TODO: Perform any necessary functions on the output
-        # TODO: Compute loss using ``criterion``
-        # compute output
-        # target = target.cuda()
-        # target_var = target_var.cuda()
-        input_var = input_var.cuda()
-        output = model(input_var)
-        ks = output.size()[2]
-        global_max = nn.MaxPool2d(kernel_size=(ks, ks))
-        output = global_max(output)
-        output = output.view(output.shape[0], output.shape[1])
-        output = F.sigmoid(output)
-        loss = criterion(output, target_var)
-
-
-        # measure metrics and record loss
-        m1 = metric1(output.data, target)
-        m2 = metric2(output.data, target)
-        losses.update(loss.data[0], input.size(0))
-        avg_m1.update(m1[0], input.size(0))
-        avg_m2.update(m2[0], input.size(0))
-
-        # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
-
-        if i % args.print_freq == 0:
-            print('Test: [{0}/{1}]\t'
-                  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                  'Metric1 {avg_m1.val:.3f} ({avg_m1.avg:.3f})\t'
-                  'Metric2 {avg_m2.val:.3f} ({avg_m2.avg:.3f})'.format(
-                   i, len(val_loader), batch_time=batch_time, loss=losses,
-                   avg_m1=avg_m1, avg_m2=avg_m2))
-
-        #TODO: Visualize things as mentioned in handout
-        #TODO: Visualize at appropriate intervals
-        data_log.scalar_summary(tag='validation/metric1', value=avg_m1.avg, step=cur_step)
-        data_log.scalar_summary(tag='validation/metric2', value=avg_m2.avg, step=cur_step)
-
-        gt_class_name = val_loader.dataset.classes
-        output_tmp = model(input_var)
-        if (epoch==args.epochs-1 and i==1):
-            for j in range(20):
-                # obtain GT classes idx
-                gt_idx = [ ]
-                for k in range(output_tmp.shape[1]):
-                    if target[j, k] == 1:
-                        gt_idx.append(k)
-                
-                # obtain original images and plot on Visdom and Tensorboard
-                img_ori = input[j].numpy()
-                img_ori = (img_ori - img_ori.min()) / (img_ori.max() - img_ori.min())
-                # write to Visdom  
-                img_layout = 'validation_'+str(epoch)+'_'+str(i)+'_'+str(j)+'_image'
-                vis.image(img_ori, opts=dict(title=img_layout))
-                 
-                # obtain rescaled heatmaps and plot on Visdom and Tensorboard
-                img_out = output_tmp.data.cpu().numpy()                
-                for cls_i in range(len(gt_idx)):
-                    k = gt_idx[cls_i]
-                    img_heatmap = img_out[j, k]
-                    img_out_norm = (img_heatmap + img_heatmap.min()) / (img_heatmap.max() - img_heatmap.min())
-                    img_heatmap = np.zeros((1, img_out_norm.shape[0], img_out_norm.shape[1]))
-                    img_heatmap[0] = img_out_norm
-
-                    img_tensor = transforms.ToPILImage()(torch.Tensor(img_heatmap))
-                    img_heatmap = transforms.Resize((512,512))(img_tensor)
-                    img_heatmap = np.uint8(mpl.cm.get_cmap('jet')(np.array(img_heatmap)) * 255)
-                    # change channel order to Visdom style
-                    heatmap_layout = 'validation_'+str(epoch)+'_'+str(i)+'_'+str(j)+'_heatmap_'+gt_class_name[k]
-                    vis.image(np.transpose(img_heatmap,(2,0,1)), opts=dict(title=heatmap_layout))
-
-
-    print(' * Metric1 {avg_m1.avg:.3f} Metric2 {avg_m2.avg:.3f}'
-          .format(avg_m1=avg_m1, avg_m2=avg_m2))
-
-    return avg_m1.avg, avg_m2.avg
-
-
 # TODO: You can make changes to this function if you wish (not necessary)
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
     torch.save(state, filename)
@@ -451,14 +316,6 @@ class AverageMeter(object):
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
-
-
-def adjust_learning_rate(optimizer, epoch):
-    """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
-    lr = args.lr * (0.1 ** (epoch // 30))
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
-
 
 def metric1(output, target):
     # TODO: Ignore for now - proceed till instructed
